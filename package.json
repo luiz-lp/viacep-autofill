@@ -1,0 +1,41 @@
+{
+  "name": "viacep-autofill",
+  "version": "1.0.0",
+  "description": "Drop-in helper para auto-preencher endereço via ViaCEP (Global e ES Module).",
+  "license": "MIT",
+  "author": "Luiz Paulo Andrade Costa Dias",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luiz-lp/viacep-autofill.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luiz-lp/viacep-autofill/issues"
+  },
+  "homepage": "https://github.com/luiz-lp/viacep-autofill#readme",
+  "type": "module",
+  "main": "dist/viacep-autofill.global.js",
+  "module": "dist/viacep-autofill.module.js",
+  "exports": {
+    ".": {
+      "import": "./dist/viacep-autofill.module.js",
+      "require": "./dist/viacep-autofill.global.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "viacep",
+    "cep",
+    "endereço",
+    "autofill",
+    "brasil"
+  ],
+  "scripts": {
+    "prepare": "echo 'Nothing to build; using prebuilt dist.'",
+    "build": "echo 'Prebuilt dist committed.'",
+    "test": "node -e \"console.log('ok')\""
+  }
+}
