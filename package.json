@@ -1,12 +1,12 @@
 {
   "name": "viacep-autofill",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Drop-in helper para auto-preencher endereço via ViaCEP (Global e ES Module).",
   "license": "MIT",
   "author": "Luiz Paulo Andrade Costa Dias",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/luiz-lp/viacep-autofill.git"
+    "url": "https://github.com/luiz-lp/viacep-autofill.git"
   },
   "bugs": {
     "url": "https://github.com/luiz-lp/viacep-autofill/issues"
@@ -24,7 +24,8 @@
   "files": [
     "dist/",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "viacep",

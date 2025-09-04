@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Exemplo ViaCEP Autofill</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    input { display: block; margin: 0.5rem 0; padding: 0.5rem; width: 200px; }
+    .loading { color: blue; }
+    .error { color: red; }
+    .success { color: green; }
+  </style>
+</head>
+<body>
+  <h1>Teste ViaCEP Autofill</h1>
+
+  <form>
+    <input id="cep" placeholder="CEP" />
+    <input id="rua" data-viacep="logradouro" placeholder="Rua" />
+    <input id="bairro" data-viacep="bairro" placeholder="Bairro" />
+    <input id="cidade" data-viacep="localidade" placeholder="Cidade" />
+    <input id="uf" data-viacep="uf" maxlength="2" placeholder="UF" />
+  </form>
+
+  <p id="status"></p>
+
+  <script src="../dist/viacep-autofill.global.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    let lastCep = null;
+
+    ViaCepAutofill.init({
+      cep: '#cep',
+
+      onStateChange: (state, payload) => {
+        if (state === 'FETCHING') {
+          const currentCep = payload.digits;
+          if (currentCep === lastCep) return; // evita buscar o mesmo
+          statusEl.textContent = '🔄 Buscando informações do CEP...';
+          statusEl.className = 'loading';
+        }
+        if (state === 'SUCCESS') {
+          lastCep = payload.data.cep?.replace(/\D/g, '');
+          statusEl.textContent = '✅ Endereço preenchido com sucesso!';
+          statusEl.className = 'success';
+        }
+        if (state === 'NOT_FOUND') {
+          statusEl.textContent = '❌ CEP não encontrado.';
+          statusEl.className = 'error';
+        }
+      },
+
+      onError: (err) => {
+        const map = {
+          INVALID_CEP: 'CEP inválido. Use 8 dígitos.',
+          RATE_LIMITED: 'Muitas consultas. Aguarde alguns segundos.',
+          NETWORK: 'Falha de rede. Tente novamente.',
+          PROVIDER: 'Erro no serviço de CEP. Tente mais tarde.'
+        };
+        alert(map[err.code] || err.message || 'Erro inesperado');
+        statusEl.textContent = map[err.code] || err.message || 'Erro inesperado';
+        statusEl.className = 'error';
+      }
+    });
+
+    // reforço: só vamos reagir ao digitar
+    document.querySelector('#cep')
+      .addEventListener('input', (e) => {
+        // se apagar, reseta status
+        if (e.target.value.trim() === '') {
+          statusEl.textContent = '';
+          lastCep = null;
+        }
+      });
+  </script>
+</body>
+</html>
