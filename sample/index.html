@@ -27,20 +27,21 @@
   <script src="../dist/viacep-autofill.global.js"></script>
   <script>
     const statusEl = document.getElementById('status');
-    let lastCep = null;
 
     ViaCepAutofill.init({
       cep: '#cep',
+      validateOnBlur: true,   // só mostra erro INVALID_CEP ao sair do campo
+      fetchTimeout: 6000,     // ms
+      retries: 2,             // tenta novamente 2 vezes
+      retryBackoffBase: 300,  // 300ms, 600ms, ...
+      fallback: true,         // tenta BrasilAPI se ViaCEP não responder
 
       onStateChange: (state, payload) => {
         if (state === 'FETCHING') {
-          const currentCep = payload.digits;
-          if (currentCep === lastCep) return; // evita buscar o mesmo
           statusEl.textContent = '🔄 Buscando informações do CEP...';
           statusEl.className = 'loading';
         }
         if (state === 'SUCCESS') {
-          lastCep = payload.data.cep?.replace(/\D/g, '');
           statusEl.textContent = '✅ Endereço preenchido com sucesso!';
           statusEl.className = 'success';
         }
@@ -53,6 +54,7 @@
       onError: (err) => {
         const map = {
           INVALID_CEP: 'CEP inválido. Use 8 dígitos.',
+          TIMEOUT: 'Tempo de resposta excedido.',
           RATE_LIMITED: 'Muitas consultas. Aguarde alguns segundos.',
           NETWORK: 'Falha de rede. Tente novamente.',
           PROVIDER: 'Erro no serviço de CEP. Tente mais tarde.'
@@ -62,16 +64,6 @@
         statusEl.className = 'error';
       }
     });
-
-    // reforço: só vamos reagir ao digitar
-    document.querySelector('#cep')
-      .addEventListener('input', (e) => {
-        // se apagar, reseta status
-        if (e.target.value.trim() === '') {
-          statusEl.textContent = '';
-          lastCep = null;
-        }
-      });
   </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {
   "name": "viacep-autofill",
-  "version": "1.1.0",
-  "description": "Drop-in helper para auto-preencher endereço via ViaCEP (Global e ES Module).",
+  "version": "1.2.0",
+  "description": "Drop-in helper para auto-preencher endereço via ViaCEP (Global e ES Module) com estados/erros, validateOnBlur, AbortController, timeout/retry/backoff e fallback.",
   "license": "MIT",
   "author": "Luiz Paulo Andrade Costa Dias",
   "repository": {
@@ -32,11 +32,13 @@
     "cep",
     "endereço",
     "autofill",
-    "brasil"
+    "brasil",
+    "cep-mask",
+    "via-cep"
   ],
   "scripts": {
-    "prepare": "echo 'Nothing to build; using prebuilt dist.'",
-    "build": "echo 'Prebuilt dist committed.'",
+    "prepare": "echo 'Using prebuilt dist.'",
+    "build": "echo 'Prebuilt dist.'",
     "test": "node -e \"console.log('ok')\""
   }
 }
