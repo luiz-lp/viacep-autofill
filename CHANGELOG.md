@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 - 2025-09-15
+### Added
+- Cache com TTL (`cache: 'memory' | 'localStorage' | false`, `cacheTTL`).
+- Escopo de formulário (`root`) para auto-map por `data-viacep` apenas dentro do container alvo.
+- Suporte a UF em `<select>` (seleciona option correspondente; `addUfIfMissing` para criar se não existir).
+- Hook `transform(data, ctx)` para normalizações antes do preenchimento.
+
 ## 1.2.0 - 2025-09-09
 ### Added
 - `validateOnBlur` para validar erro de CEP só ao sair do campo (opcional).

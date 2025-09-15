@@ -1,5 +1,5 @@
-// v1.2.0 — validateOnBlur + AbortController + timeout/retry/backoff + fallback (BrasilAPI)
-// Includes: state machine, structured errors, no re-dispatch on CEP field
+// v1.3.0 — cache + root scoping + UF <select> + transformers
+// Includes: state machine, structured errors, validateOnBlur, AbortController, timeout/retry/backoff, fallback (BrasilAPI)
 
 const STATES = {
   IDLE:'IDLE',
@@ -22,6 +22,8 @@ const ERR = {
 };
 
 const DEFAULTS = {
+  // scope
+  root: null,                  // NEW: limita auto-map a um container (ex: '#form-endereco')
   cep: null,
   fields: {},
   outputsSelector: '[data-viacep]',
@@ -31,15 +33,31 @@ const DEFAULTS = {
   clearOnEmpty: true,
   disableDuringFetch: true,
   fillStrategy: 'replace',
-  validateOnBlur: false,     // NEW: só valida/alerta erro ao sair do campo
-  fetchTimeout: 6000,        // NEW: ms
-  retries: 1,                // NEW: tentativas extras (além da primeira)
-  retryBackoffBase: 300,     // NEW: ms multiplicado por (tentativa+1)
-  fallback: true,            // NEW: tenta BrasilAPI quando ViaCEP falhar/não achar
+
+  // UX
+  validateOnBlur: false,
+
+  // network
+  fetchTimeout: 6000,
+  retries: 1,
+  retryBackoffBase: 300,
+  fallback: true,
+
+  // cache
+  cache: 'memory',             // NEW: 'memory' | 'localStorage' | false
+  cacheTTL: 5 * 60 * 1000,     // NEW: 5 min em ms
+
+  // field helpers
+  addUfIfMissing: false,       // NEW: adiciona option ao <select> se UF não existir
+
+  // transforms
+  transform: null,             // NEW: (data, ctx) => data
+
+  // callbacks
   onSuccess: null,
   onNotFound: null,
   onError: null,
-  onStateChange: null        // (state, payload, ctx)
+  onStateChange: null
 };
 
 const FIELDS_LIST = [
@@ -73,7 +91,11 @@ function setValue(el, value, strategy='replace', skipEvents=false) {
   if (strategy === 'append' && el.value) {
     el.value = (el.value + ' ' + (value || '')).trim();
   } else {
-    el.value = value || '';
+    if (el.tagName === 'SELECT') {
+      el.value = value || '';
+    } else {
+      el.value = value || '';
+    }
   }
   if (!skipEvents) {
     try {
@@ -83,9 +105,14 @@ function setValue(el, value, strategy='replace', skipEvents=false) {
   }
 }
 
-function buildAutoMap(root, selector) {
+function findRootElement(rootOpt) {
+  if (!rootOpt) return document;
+  return $(rootOpt) || document;
+}
+
+function buildAutoMap(rootEl, selector) {
   const map = {};
-  all(selector, root).forEach(el => {
+  all(selector, rootEl).forEach(el => {
     const key = el.getAttribute('data-viacep');
     if (key && FIELDS_LIST.includes(key)) map[key] = el;
   });
@@ -100,17 +127,46 @@ function mergeFieldTargets(manualMap, autoMap) {
   return merged;
 }
 
-function fillFields(targets, data, strategy) {
+function fillUF(el, uf, addIfMissing=false) {
+  if (!el) return;
+  const val = (uf || '').toUpperCase();
+  if (el.tagName !== 'SELECT') {
+    setValue(el, val);
+    return;
+  }
+  const options = Array.from(el.options);
+  let opt = options.find(o => (o.value || '').toUpperCase() === val) ||
+            options.find(o => (o.text || '').toUpperCase() === val);
+  if (!opt && addIfMissing && val) {
+    opt = new Option(val, val);
+    el.add(opt, undefined);
+  }
+  if (opt) el.value = opt.value;
+  try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(e) {}
+}
+
+function fillFields(targets, data, strategy, addUfIfMissing) {
   Object.entries(targets).forEach(([key, el]) => {
     if (!el) return;
     const skipEvents = (key === 'cep'); // evita loop no próprio campo CEP
-    if (key === 'cep') setValue(el, formatCep(data.cep || ''), strategy, true);
-    else setValue(el, data[key] || '', strategy, skipEvents);
+    if (key === 'cep') {
+      setValue(el, formatCep(data.cep || ''), strategy, true);
+      return;
+    }
+    if (key === 'uf') {
+      fillUF(el, data.uf || '', addUfIfMissing);
+      return;
+    }
+    setValue(el, data[key] || '', strategy, skipEvents);
   });
 }
 
 function clearFields(targets) {
-  Object.values(targets).forEach(el => el && setValue(el, '', 'replace', el && el.id === 'cep'));
+  Object.values(targets).forEach(el => {
+    if (!el) return;
+    if (el.tagName === 'SELECT') el.value = '';
+    else setValue(el, '', 'replace', el && el.id === 'cep');
+  });
 }
 
 function toggleTargets(targets, disabled) {
@@ -159,30 +215,71 @@ async function fetchViaCep(cepDigits, { timeout, signal } = {}) {
 async function fetchBrasilApi(cepDigits, { timeout, signal } = {}) {
   try {
     const d = await fetchJson(`https://brasilapi.com.br/api/cep/v2/${cepDigits}`, { timeout, signal });
-    // se chegou aqui, é porque o status foi 200 → CEP existe
     return {
-      cep: (d.cep || '').replace(/\D/g, ''),
-      logradouro: d.street || '',
-      complemento: d.location && d.location.coordinates ? '' : (d.complement || ''),
-      bairro: d.neighborhood || '',
-      localidade: d.city || '',
-      uf: d.state || '',
-      ibge: d.city_ibge || d.ibge || '',
-      gia: '',
-      ddd: d.state_ddd || '',
-      siafi: ''
+      data: {
+        cep: (d.cep || '').replace(/\D/g, ''),
+        logradouro: d.street || '',
+        complemento: d.location && d.location.coordinates ? '' : (d.complement || ''),
+        bairro: d.neighborhood || '',
+        localidade: d.city || '',
+        uf: d.state || '',
+        ibge: d.city_ibge || d.ibge || '',
+        gia: '',
+        ddd: d.state_ddd || '',
+        siafi: ''
+      }
     };
   } catch (e) {
-    // se o BrasilAPI respondeu 404, consideramos NOT_FOUND
-    if (e.cause && e.cause.status === 404) {
-      return { notFound: true };
-    }
-    throw e; // outros erros continuam sendo erro de rede
+    if (e.cause && e.cause.status === 404) return { notFound: true };
+    throw e;
+  }
+}
+
+// --- Cache helpers ---
+const _memCache = new Map(); // key -> { t:number, data:any | null, notFound?:true, provider?:string }
+function cacheKey(cepDigits) { return `viacep-autofill:${cepDigits}`; }
+
+function cacheGet(opts, cepDigits) {
+  if (!opts.cache) return null;
+  const now = Date.now();
+  if (opts.cache === 'memory') {
+    const item = _memCache.get(cepDigits);
+    if (!item) return null;
+    if (now - item.t > opts.cacheTTL) { _memCache.delete(cepDigits); return null; }
+    return item;
+  }
+  if (opts.cache === 'localStorage' && typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(cacheKey(cepDigits));
+      if (!raw) return null;
+      const item = JSON.parse(raw);
+      if (now - item.t > opts.cacheTTL) { localStorage.removeItem(cacheKey(cepDigits)); return null; }
+      return item;
+    } catch(e) { return null; }
+  }
+  return null;
+}
+
+function cacheSet(opts, cepDigits, value) {
+  if (!opts.cache) return;
+  const item = { t: Date.now(), ...value };
+  if (opts.cache === 'memory') {
+    _memCache.set(cepDigits, item);
+  } else if (opts.cache === 'localStorage' && typeof localStorage !== 'undefined') {
+    try { localStorage.setItem(cacheKey(cepDigits), JSON.stringify(item)); } catch(e) {}
   }
 }
 
 async function resolveCep(cepDigits, opts, externalSignal) {
-  const { timeout = 6000, retries = 1, retryBackoffBase = 300, fallback = true } = opts || {};
+  const { timeout=6000, retries=1, retryBackoffBase=300, fallback=true } = opts || {};
+
+  // 0) cache
+  const cached = cacheGet(opts, cepDigits);
+  if (cached) {
+    if (cached.notFound) return { provider: cached.provider || 'cache', data: null, fromCache: true };
+    return { provider: cached.provider || 'cache', data: cached.data, fromCache: true };
+  }
+
   let attempt = 0;
   let lastErr;
 
@@ -196,35 +293,44 @@ async function resolveCep(cepDigits, opts, externalSignal) {
     try {
       // 1) ViaCEP
       const via = await fetchViaCep(cepDigits, { timeout, signal: controller.signal });
-      if (via?.data) return { provider: 'viacep', data: via.data };
+      if (via?.data) {
+        cacheSet(opts, cepDigits, { provider: 'viacep', data: via.data });
+        return { provider: 'viacep', data: via.data };
+      }
       if (via?.notFound) {
-        // CEP não existe — retornar NOT_FOUND sem fallback
+        cacheSet(opts, cepDigits, { provider: 'viacep', notFound: true });
         return { provider: 'viacep', data: null };
       }
 
-      // Caso improvável (sem data e sem notFound) — trata como NOT_FOUND
+      // default: considerar not found
+      cacheSet(opts, cepDigits, { provider: 'viacep', notFound: true });
       return { provider: 'viacep', data: null };
 
     } catch (e) {
-      // Erro de rede/timeout/rate-limit no ViaCEP
       lastErr = e;
 
-      // 2) Se permitido, tenta fallback BrasilAPI ainda nesta tentativa
+      // Se o erro for um abort nativo do fetch
+      if (e && e.name === 'AbortError') {
+        throw { code: 'CANCELED', message: 'Aborted', cause: e };
+      }
+
+      // 2) fallback quando erro de rede/timeouts
       if (fallback) {
         try {
           const br = await fetchBrasilApi(cepDigits, { timeout, signal: controller.signal });
-          if (br?.data) return { provider: 'brasilapi', data: br.data };
+          if (br?.data) {
+            cacheSet(opts, cepDigits, { provider: 'brasilapi', data: br.data });
+            return { provider: 'brasilapi', data: br.data };
+          }
           if (br?.notFound) {
-            // se BrasilAPI também diz que não existe, é NOT_FOUND
+            cacheSet(opts, cepDigits, { provider: 'brasilapi', notFound: true });
             return { provider: 'brasilapi', data: null };
           }
         } catch (e2) {
-          // se fallback também falhar por rede, guardamos o último erro
           lastErr = e2;
         }
       }
 
-      // 3) Retry com backoff (somente se ainda temos tentativas)
       if (attempt === retries) break;
       const delay = retryBackoffBase * (attempt + 1);
       await new Promise(r => setTimeout(r, delay));
@@ -232,21 +338,20 @@ async function resolveCep(cepDigits, opts, externalSignal) {
     }
   }
 
-  // Se chegamos aqui: esgotou retry em erro de rede
   throw lastErr || { code: ERR.PROVIDER, message: 'Unknown error' };
 }
 
-
 function coreInit(userOptions) {
   const opts = Object.assign({}, DEFAULTS, userOptions || {});
-  const cepInput = $(opts.cep);
+  const rootEl = findRootElement(opts.root);
+  const cepInput = $(opts.cep, rootEl);
   if (!cepInput) throw new Error('[ViaCepAutofill] Seletor do CEP inválido ou não encontrado.');
 
-  const autoMap = buildAutoMap(document, opts.outputsSelector);
+  const autoMap = buildAutoMap(rootEl, opts.outputsSelector);
   const targets = mergeFieldTargets(opts.fields, autoMap);
   targets.cep = targets.cep || cepInput;
 
-  const ctx = { options: opts, cepInput, targets, state: STATES.IDLE, inflight: null, lastDigits: null };
+  const ctx = { options: opts, rootEl, cepInput, targets, state: STATES.IDLE, inflight: null, lastDigits: null };
   setState(ctx, STATES.IDLE);
 
   // máscara e limpeza
@@ -292,24 +397,39 @@ function coreInit(userOptions) {
     try {
       if (opts.disableDuringFetch) toggleTargets(targets, true);
       setState(ctx, STATES.FETCHING, { digits });
-      const { data, provider } = await resolveCep(digits, {
+      const result = await resolveCep(digits, {
         timeout: opts.fetchTimeout,
         retries: opts.retries,
         retryBackoffBase: opts.retryBackoffBase,
-        fallback: opts.fallback
+        fallback: opts.fallback,
+        cache: opts.cache,
+        cacheTTL: opts.cacheTTL
       }, ctx.inflight.signal);
 
+      let data = result.data;
       if (!data) {
-        setState(ctx, STATES.NOT_FOUND, { digits, provider });
+        setState(ctx, STATES.NOT_FOUND, { digits, provider: result.provider, fromCache: result.fromCache });
         if (typeof opts.onNotFound === 'function') opts.onNotFound(digits, ctx);
         return;
       }
 
-      fillFields(targets, data, opts.fillStrategy);
+      // transformer (permite normalizar/ajustar)
+      if (typeof opts.transform === 'function') {
+        try { data = opts.transform(data, ctx) || data; } catch(e) {}
+      }
+
+      fillFields(targets, data, opts.fillStrategy, opts.addUfIfMissing);
       ctx.lastDigits = digits;
-      setState(ctx, STATES.SUCCESS, { data, provider });
+      setState(ctx, STATES.SUCCESS, { data, provider: result.provider, fromCache: result.fromCache });
       if (typeof opts.onSuccess === 'function') opts.onSuccess(data, ctx);
     } catch (err) {
+
+      // Silenciar aborts (quando trocamos de CEP rápido ou blur/input coincidem)
+      if (err && (err.name === 'AbortError' || err.code === 'CANCELED')) {
+        setState(ctx, STATES.CANCELED, { error: err });
+        return; // <- não chama onError
+      }
+
       const shaped = (err && err.code) ? err : { code: ERR.PROVIDER, message: String(err || 'Erro'), cause: err };
       if (shaped.code === ERR.RATE_LIMITED) setState(ctx, STATES.RATE_LIMITED, { error: shaped });
       else if (shaped.code === ERR.TIMEOUT) setState(ctx, STATES.ERROR, { error: shaped });
@@ -318,16 +438,12 @@ function coreInit(userOptions) {
     } finally {
       if (opts.disableDuringFetch) toggleTargets(targets, false);
     }
-  }, DEFAULTS.debounce);  // ensure default debounce if user passes weird value
+  }, opts.debounce);
 
-  // Gatilhos: input/change/blur/paste (mais robusto),
-  // mas INVALID_CEP pode ser silencioso se validateOnBlur=true.
+  // Gatilhos
   ['input','change','blur','paste'].forEach(ev => {
     if (ev === 'blur') {
-      cepInput.addEventListener('blur', () => {
-        // no blur, força validação/busca final
-        debouncedLookup();
-      });
+      cepInput.addEventListener('blur', () => debouncedLookup());
     } else {
       cepInput.addEventListener(ev, debouncedLookup);
     }
@@ -335,7 +451,7 @@ function coreInit(userOptions) {
 
   function lookup(cepValue) {
     const digits = onlyDigits(cepValue);
-    // usa o mesmo pipeline (com validação/abort/timeout/etc.)
+    // usa o mesmo pipeline (com cache/validação/abort/timeout/etc.)
     cepInput.value = formatCep(digits);
     debouncedLookup();
     return Promise.resolve();

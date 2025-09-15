@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>ViaCEP Autofill — Advanced (v1.3.0)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --gap: 1.25rem; --w: 260px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--gap); }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+    .title { margin: 0 0 .5rem; font-size: 1.1rem; }
+    form { display: grid; gap: .5rem; }
+    label { font-size: .9rem; color: #374151; }
+    input, select { width: var(--w); padding: .55rem .6rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: .95rem; }
+    .status { min-height: 1.25rem; font-size: .9rem; margin-top: .25rem; }
+    .status.loading { color: #2563eb; }
+    .status.success { color: #059669; }
+    .status.error { color: #dc2626; }
+    .muted { color: #6b7280; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <h1>ViaCEP Autofill — Advanced (v1.3.0)</h1>
+  <p class="muted">Três formulários independentes, cada um com seu próprio <code>root</code>, política de cache e configurações.</p>
+
+  <div class="grid">
+    <!-- ================== FORM A (cache em memória) ================== -->
+    <div class="card">
+      <h2 class="title">Form A — cache: memory</h2>
+      <form id="form-a" aria-busy="false">
+        <label for="cep-a">CEP</label>
+        <input id="cep-a" placeholder="CEP" autocomplete="postal-code" />
+
+        <label for="rua-a">Rua</label>
+        <input id="rua-a" data-viacep="logradouro" placeholder="Rua" />
+
+        <label for="bairro-a">Bairro</label>
+        <input id="bairro-a" data-viacep="bairro" placeholder="Bairro" />
+
+        <label for="cidade-a">Cidade</label>
+        <input id="cidade-a" data-viacep="localidade" placeholder="Cidade" />
+
+        <label for="uf-a">UF</label>
+        <select id="uf-a" data-viacep="uf">
+          <option value="">Selecionar</option>
+          <option>SP</option><option>RJ</option><option>MG</option><option>ES</option>
+        </select>
+
+        <input type="hidden" id="cep-a-hidden" name="cepSemMascara" />
+        <div id="status-a" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+      </form>
+      <p class="muted">Cache só na sessão atual (memória). Bom para páginas que não precisam persistir cache entre visitas.</p>
+    </div>
+
+    <!-- ================== FORM B (cache em localStorage) ================== -->
+    <div class="card">
+      <h2 class="title">Form B — cache: localStorage</h2>
+      <form id="form-b" aria-busy="false">
+        <label for="cep-b">CEP</label>
+        <input id="cep-b" placeholder="CEP" autocomplete="postal-code" />
+
+        <label for="rua-b">Rua</label>
+        <input id="rua-b" data-viacep="logradouro" placeholder="Rua" />
+
+        <label for="bairro-b">Bairro</label>
+        <input id="bairro-b" data-viacep="bairro" placeholder="Bairro" />
+
+        <label for="cidade-b">Cidade</label>
+        <input id="cidade-b" data-viacep="localidade" placeholder="Cidade" />
+
+        <label for="uf-b">UF</label>
+        <select id="uf-b" data-viacep="uf">
+          <option value="">Selecionar</option>
+          <option>SP</option><option>RJ</option><option>MG</option><option>ES</option>
+        </select>
+
+        <input type="hidden" id="cep-b-hidden" name="cepSemMascara" />
+        <div id="status-b" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+      </form>
+      <p class="muted">Cache persistente (5 min por padrão). Ajuda a evitar rate limit entre páginas/visitas.</p>
+    </div>
+
+    <!-- ================== FORM C (sem cache, validateOnBlur) ================== -->
+    <div class="card">
+      <h2 class="title">Form C — sem cache + validateOnBlur</h2>
+      <form id="form-c" aria-busy="false">
+        <label for="cep-c">CEP</label>
+        <input id="cep-c" placeholder="CEP" autocomplete="postal-code" />
+
+        <label for="rua-c">Rua</label>
+        <input id="rua-c" data-viacep="logradouro" placeholder="Rua" />
+
+        <label for="bairro-c">Bairro</label>
+        <input id="bairro-c" data-viacep="bairro" placeholder="Bairro" />
+
+        <label for="cidade-c">Cidade</label>
+        <input id="cidade-c" data-viacep="localidade" placeholder="Cidade" />
+
+        <label for="uf-c">UF</label>
+        <select id="uf-c" data-viacep="uf">
+          <option value="">Selecionar</option>
+          <option>SP</option><option>RJ</option><option>MG</option><option>ES</option>
+        </select>
+
+        <input type="hidden" id="cep-c-hidden" name="cepSemMascara" />
+        <div id="status-c" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+      </form>
+      <p class="muted">Sem cache e validação de CEP só ao sair do campo (evita “INVALID_CEP” enquanto digita).</p>
+    </div>
+  </div>
+
+  <!-- ajuste o caminho conforme a sua estrutura -->
+  <script src="../dist/viacep-autofill.global.js"></script>
+  <script>
+    // Utils para mensagens/status e aria-busy
+    function wireStatusHooks(rootSel, statusSel) {
+      const form = document.querySelector(rootSel);
+      const statusEl = document.querySelector(statusSel);
+      return {
+        onStateChange(state, payload) {
+          if (state === 'FETCHING') {
+            form && form.setAttribute('aria-busy', 'true');
+            statusEl.textContent = '🔄 Buscando endereço…';
+            statusEl.className = 'status loading';
+          } else if (state === 'SUCCESS') {
+            form && form.setAttribute('aria-busy', 'false');
+            statusEl.textContent = '✅ Endereço preenchido.';
+            statusEl.className = 'status success';
+          } else if (state === 'NOT_FOUND') {
+            form && form.setAttribute('aria-busy', 'false');
+            statusEl.textContent = '❌ CEP não encontrado.';
+            statusEl.className = 'status error';
+          } else if (state === 'INVALID_CEP') {
+            form && form.setAttribute('aria-busy', 'false');
+            statusEl.textContent = '⚠️ CEP inválido. Use 8 dígitos.';
+            statusEl.className = 'status error';
+          } else if (state === 'ERROR' || state === 'RATE_LIMITED') {
+            form && form.setAttribute('aria-busy', 'false');
+            statusEl.textContent = '⚠️ Erro ao consultar CEP.';
+            statusEl.className = 'status error';
+          } else if (state === 'CANCELED') {
+            // silêncio para aborts/cancelamentos
+            form && form.setAttribute('aria-busy', 'false');
+          }
+        },
+        onError(err) {
+          // silencie aborts/cancelamentos
+          if (err && (err.code === 'CANCELED' || err.name === 'AbortError')) return;
+          const map = {
+            INVALID_CEP: 'CEP inválido. Use 8 dígitos.',
+            TIMEOUT: 'Tempo de resposta excedido.',
+            RATE_LIMITED: 'Muitas consultas. Aguarde alguns segundos.',
+            NETWORK: 'Falha de rede. Tente novamente.',
+            PROVIDER: 'Erro no serviço de CEP. Tente mais tarde.'
+          };
+          const form = document.querySelector(rootSel);
+          const statusEl = document.querySelector(statusSel);
+          statusEl.textContent = map[err.code] || err.message || 'Erro inesperado';
+          statusEl.className = 'status error';
+          form && form.setAttribute('aria-busy', 'false');
+        }
+      };
+    }
+
+    // Transform comum (capitalização + CEP hidden sem máscara)
+    function makeTransform(hiddenSelector) {
+      return (data) => {
+        const out = { ...data };
+        if (out.logradouro) {
+          out.logradouro = out.logradouro
+            .replace(/\s+/g, ' ')
+            .toLowerCase()
+            .replace(/^\w/g, c => c.toUpperCase());
+        }
+        const hidden = document.querySelector(hiddenSelector);
+        if (hidden) hidden.value = (out.cep || '').replace(/\D+/g, '');
+        return out;
+      };
+    }
+
+    // ================== Init Form A (cache em memória) ==================
+    {
+      const hooks = wireStatusHooks('#form-a', '#status-a');
+      ViaCepAutofill.init({
+        root: '#form-a',
+        cep: '#cep-a',
+        // rede
+        fetchTimeout: 6000,
+        retries: 1,
+        fallback: true,
+        // cache
+        cache: 'memory',
+        cacheTTL: 300000,
+        // UF select
+        addUfIfMissing: true,
+        // transform
+        transform: makeTransform('#cep-a-hidden'),
+        onStateChange: hooks.onStateChange,
+        onError: hooks.onError
+      });
+    }
+
+    // ================== Init Form B (cache localStorage) ==================
+    {
+      const hooks = wireStatusHooks('#form-b', '#status-b');
+      ViaCepAutofill.init({
+        root: '#form-b',
+        cep: '#cep-b',
+        fetchTimeout: 6000,
+        retries: 2,
+        retryBackoffBase: 300,
+        fallback: true,
+        cache: 'localStorage',
+        cacheTTL: 5 * 60 * 1000, // 5 min
+        addUfIfMissing: true,
+        transform: makeTransform('#cep-b-hidden'),
+        onStateChange: hooks.onStateChange,
+        onError: hooks.onError
+      });
+    }
+
+    // ================== Init Form C (sem cache, validateOnBlur) ==================
+    {
+      const hooks = wireStatusHooks('#form-c', '#status-c');
+      ViaCepAutofill.init({
+        root: '#form-c',
+        cep: '#cep-c',
+        validateOnBlur: true,    // só mostra INVALID_CEP ao sair do campo
+        fetchTimeout: 6000,
+        retries: 0,              // sem retry
+        fallback: true,
+        cache: false,            // sem cache
+        addUfIfMissing: true,
+        transform: makeTransform('#cep-c-hidden'),
+        onStateChange: hooks.onStateChange,
+        onError: hooks.onError
+      });
+    }
+  </script>
+</body>
+</html>

@@ -2,24 +2,29 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Exemplo ViaCEP Autofill</title>
+  <title>Exemplo ViaCEP Autofill v1.3.0</title>
   <style>
     body { font-family: sans-serif; margin: 2rem; }
-    input { display: block; margin: 0.5rem 0; padding: 0.5rem; width: 200px; }
+    input, select { display: block; margin: 0.5rem 0; padding: 0.5rem; width: 220px; }
     .loading { color: blue; }
     .error { color: red; }
     .success { color: green; }
   </style>
 </head>
 <body>
-  <h1>Teste ViaCEP Autofill</h1>
+  <h1>Teste ViaCEP Autofill v1.3.0</h1>
 
-  <form>
+  <form id="form-endereco">
     <input id="cep" placeholder="CEP" />
     <input id="rua" data-viacep="logradouro" placeholder="Rua" />
     <input id="bairro" data-viacep="bairro" placeholder="Bairro" />
     <input id="cidade" data-viacep="localidade" placeholder="Cidade" />
-    <input id="uf" data-viacep="uf" maxlength="2" placeholder="UF" />
+    <select id="uf" data-viacep="uf">
+      <option value="">UF</option>
+      <option>SP</option><option>RJ</option><option>MG</option><option>ES</option>
+    </select>
+    <!-- hidden só pra demonstrar transform -->
+    <input type="hidden" id="cep-hidden" name="cepSemMascara" />
   </form>
 
   <p id="status"></p>
@@ -29,12 +34,35 @@
     const statusEl = document.getElementById('status');
 
     ViaCepAutofill.init({
+      root: '#form-endereco',     // novo: limita auto-map a este form
       cep: '#cep',
-      validateOnBlur: true,   // só mostra erro INVALID_CEP ao sair do campo
-      fetchTimeout: 6000,     // ms
-      retries: 2,             // tenta novamente 2 vezes
-      retryBackoffBase: 300,  // 300ms, 600ms, ...
-      fallback: true,         // tenta BrasilAPI se ViaCEP não responder
+      validateOnBlur: true,
+      fetchTimeout: 6000,
+      retries: 2,
+      retryBackoffBase: 300,
+      fallback: true,
+
+      // cache configurado
+      cache: 'localStorage',      // 'memory' | 'localStorage' | false
+      cacheTTL: 300000,           // 5 minutos
+
+      // UF select
+      addUfIfMissing: true,       // cria a option se não existir
+
+      // transformação antes de preencher
+      transform(data) {
+        const out = { ...data };
+        if (out.logradouro) {
+          out.logradouro = out.logradouro
+            .replace(/\s+/g, ' ')
+            .toLowerCase()
+            .replace(/^\w/g, c => c.toUpperCase());
+        }
+        // Exemplo: salvar CEP sem máscara em hidden
+        const hidden = document.querySelector('#cep-hidden');
+        if (hidden) hidden.value = (out.cep || '').replace(/\D+/g, '');
+        return out;
+      },
 
       onStateChange: (state, payload) => {
         if (state === 'FETCHING') {
@@ -52,6 +80,7 @@
       },
 
       onError: (err) => {
+        if (err.code === 'CANCELED' || err.name === 'AbortError') return; // silencia
         const map = {
           INVALID_CEP: 'CEP inválido. Use 8 dígitos.',
           TIMEOUT: 'Tempo de resposta excedido.',
